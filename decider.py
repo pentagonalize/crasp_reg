@@ -116,7 +116,7 @@ def relabel(G, cycles, morphism):
                         # first relabling of just symbols
                         graph_copy[u][v][key]['label'] = vec
                     else:
-                        # need to keep history of labels, so we concat label vectors\
+                        # need to keep history of labels, so we concat label vectors
                         temp_g_label = G[u][v][key]['label'].copy()
                         temp_g_label.col_join(vec)
                         graph_copy[u][v][key]['label'] = temp_g_label
@@ -162,6 +162,7 @@ def attack_scc(G):
         basis = loop_equations(ordered_alphabet, cycles)
         A = Matrix(basis)
         current_nullspace = A.nullspace()
+        # print("Current nullspace basis:", current_nullspace)
         if current_nullspace == prev_nullspace:
             # converged
             break
@@ -209,7 +210,7 @@ def decide_CRASP_membership(my_dfa):
 #     #     initial_state='q0',
 #     #     final_states={'q3'}
 #     # )
-#     regex_str = 'a*b(c*|d|efg)*'
+#     regex_str = '(ab|aabb)*'
 #     print("regex:", regex_str)
 #     nfa = NFA.from_regex(regex_str)
 #     my_dfa = DFA.from_nfa(nfa, minify=True)
