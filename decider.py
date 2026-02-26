@@ -194,6 +194,11 @@ def decide_CRASP_membership(my_dfa):
             return False
     return True
 
+def decide_CRASP_membership_from_regex(regex_str):
+    nfa = NFA.from_regex(regex_str)
+    my_dfa = DFA.from_nfa(nfa, minify=True)
+    return decide_CRASP_membership(my_dfa)
+
 # if __name__ == "__main__":
 #     # my_dfa = DFA(
 #     #     states={'q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6'},
