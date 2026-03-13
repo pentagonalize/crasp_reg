@@ -153,16 +153,16 @@ def get_ordered_alphabet(G):
 
 def attack_scc(G):
     # attack an SCC (to decide membership in C-RASP)
+    temp_G = G.copy()
     prev_nullspace = None
     # the algorithm converges once the null spaces don't change
     while True:
         # find all balanced morphisms using the nullspace of the loop equations
-        ordered_alphabet = get_ordered_alphabet(G)
-        cycles = get_simple_cycles_edges(G)
+        ordered_alphabet = get_ordered_alphabet(temp_G)
+        cycles = get_simple_cycles_edges(temp_G)
         basis = loop_equations(ordered_alphabet, cycles)
         A = Matrix(basis)
         current_nullspace = A.nullspace()
-        # print("Current nullspace basis:", current_nullspace)
         if current_nullspace == prev_nullspace:
             # converged
             break
@@ -178,9 +178,11 @@ def attack_scc(G):
             for nb in current_nullspace:
                 vec.append(nb[i])
             morphism[ordered_alphabet[i]] = Matrix(vec)
-        relabel(G, cycles, morphism)
+        # apply the morphism to relabel the graph
+        relabel(temp_G, cycles, morphism)
+        # print(f"Relabeled graph edges with labels: {[(u, v, data['label']) for u, v, data in temp_G.edges(data=True)]}")
     # after convergence, return whether the morphism separates the nodes
-    return separated(G)
+    return separated(temp_G)
 
 def decide_CRASP_membership(my_dfa):
     # decide membership in C-RASP by iterating over the SCCs in the dfa
@@ -188,8 +190,26 @@ def decide_CRASP_membership(my_dfa):
     G = automata_to_graph(my_dfa)
     sccs = nx.strongly_connected_components(G)
     for component in sccs:
-        sg = G.subgraph(component)
-        result = attack_scc(sg)
+        # duplicate component
+        temp_G = G.subgraph(component).copy()
+        garbage_node = 'garbage'
+        temp_G.add_node(garbage_node)
+        # make sure that every node has an outgoing edge for every symbol in the alphabet (add a garbage node for missing edges)
+        # but don't add self loops to the garbage node
+        alphabet = set()
+        for _, _, data in temp_G.edges(data=True):
+            label = data['label']
+            label = tuple(label) if isinstance(label, Matrix) else label
+            alphabet.add(label)
+        for node in temp_G.nodes():
+            for sym in alphabet:
+                # Do not add self loops to the garbage node
+                if node == garbage_node:
+                    continue
+                if not any((node, _, data) for _, _, data in temp_G.out_edges(node, data=True) if data['label'] == sym):
+                    temp_G.add_edge(node, garbage_node, label=sym)
+        # show the graph of the SCC being attacked
+        result = attack_scc(temp_G)
         if not result:
             return False
     return True
@@ -199,31 +219,17 @@ def decide_CRASP_membership_from_regex(regex_str):
     my_dfa = DFA.from_nfa(nfa, minify=True)
     return decide_CRASP_membership(my_dfa)
 
-# if __name__ == "__main__":
-#     # my_dfa = DFA(
-#     #     states={'q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6'},
-#     #     input_symbols={'a', 'b'},
-#     #     transitions={
-#     #         'q0': {'a': 'q1', 'b': 'q2'},
-#     #         'q1': {'a': 'q6', 'b': 'q0'},
-#     #         'q2': {'a': 'q6', 'b': 'q3'},
-#     #         'q3': {'a': 'q4', 'b': 'q6'},
-#     #         'q4': {'a': 'q5', 'b': 'q6'},
-#     #         'q5': {'a': 'q6', 'b': 'q2'},
-#     #         'q6': {'a': 'q6', 'b': 'q6'}
-#     #     },
-#     #     initial_state='q0',
-#     #     final_states={'q3'}
-#     # )
-#     regex_str = '(ab|aabb)*'
-#     print("regex:", regex_str)
-#     nfa = NFA.from_regex(regex_str)
-#     my_dfa = DFA.from_nfa(nfa, minify=True)
+if __name__ == "__main__":
 
-#     generate_dfa_diagram(my_dfa, filename='drawings/my_dfa', output_format='svg', auto_open=False)
-#     G = automata_to_graph(my_dfa)
-#     plt.show()
+    regex_str = '(bba)*'
+    print("regex:", regex_str)
+    nfa = NFA.from_regex(regex_str)
+    my_dfa = DFA.from_nfa(nfa, minify=True)
 
-#     membership = decide_CRASP_membership(my_dfa)
-#     print(f"CRASP membership: {membership}")
+    generate_dfa_diagram(my_dfa, filename='drawings/my_dfa', output_format='svg', auto_open=False)
+    G = automata_to_graph(my_dfa)
+    plt.show()
+
+    membership = decide_CRASP_membership(my_dfa)
+    print(f"CRASP membership: {membership}")
 

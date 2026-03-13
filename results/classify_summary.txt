@@ -1,5 +1,6 @@
-Total generated: 1000
-C-RASP: 794
-R_infinity but not C-RASP: 61
-Not R_infinity: 145
+Total generated: 100
+R: 23
+C-RASP: 48
+R_infinity but not C-RASP: 21
+Not R_infinity: 8
 Errors: 0
