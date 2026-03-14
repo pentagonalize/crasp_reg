@@ -122,7 +122,7 @@ regex_rules = {
 
     # Factors (atoms with optional star)
     'F': [
-        ['SCC'],
+        # ['SCC'],
         ['A'],
         ['A', '*'],
     ],
@@ -133,31 +133,6 @@ regex_rules = {
         ['b'],
         ['c'],
         ['(', 'R', ')'],
-    ],
-
-    # Strongly connected components (encourage C-RASP structures)
-    'SCC': [
-        ['(','RS', ')','*'],
-    ],
-
-    # Starless regex with alternation
-    'RS': [
-        ['TS'],
-        ['TS', '+', 'RS'],
-    ],
-
-    # Starless terms (concatenation)
-    'TS': [
-        ['AS'],
-        ['AS', 'TS'],
-    ],
-
-    # Starless atoms (base symbols or grouped expressions)
-    'AS': [
-        ['a'],
-        ['b'],
-        ['c'],
-        ['(', 'RS', ')'],
     ]
 }
 
@@ -187,63 +162,27 @@ def check_R_infinity(semigroup):
 
 if __name__ == "__main__":
 
-    # alphabet used by the regex generator
-    alphabet = set(['a', 'b', 'c'])
-    # print("hi")
-    # alphabet = set(['a', 'b', 'c'])
-    # regex = '(a+c)*cb*c+a*a*bb+a*'
-    # language = pysemigroup.RegularLanguage.from_easy_regex(regex, alphabet)
-
-    # # get the syntactic monoid of the language
-    # semigroup = language.syntactic_monoid()
-
-    # r_membership = check_R(semigroup)
-    # print(f"R membership: {r_membership}")
-    
-    # sys.exit(0)
     # generate
-    n = 100
+    n = 1000
     # Set probabilities for each nonterminal
     regex_rule_probs = {
         # 'R': ['T', 'T + R']
-        'R': [0.5, 0.5],
+        'R': [0.3, 0.7],
 
         # 'T': ['F', 'F T']
-        'T': [0.5, 0.5],
+        'T': [0.2, 0.8],
 
-        # 'F': ['SCC', 'A', 'A *']
-        #   0: 'SCC'
-        #   1: 'A'
-        #   2: 'A *'
-        'F': [0.8, 0.1, 0.1],
+        # 'F': ['A', 'A *']
+        #   0: 'A'
+        #   1: 'A *'
+        'F': [0.5, 0.5],
 
         # 'A': ['a', 'b', 'c', '( R )']
         #   0: 'a'
         #   1: 'b'
         #   2: 'c'
         #   3: '( R )'
-        'A': [0.25, 0.25, 0.25, 0.25],
-
-        # 'SCC': ['RS *']
-        #   0: 'RS *'
-        'SCC': [1.0],                 
-
-        # 'RS': ['TS', 'TS + RS']
-        #   0: 'TS'
-        #   1: 'TS + RS'
-        'RS': [0.8, 0.2],
-
-        # 'TS': ['AS', 'AS TS']
-        #   0: 'AS'
-        #   1: 'AS TS'
-        'TS': [0.2, 0.8],
-
-        # 'AS': ['a', 'b', 'c', '( RS )']
-        #   0: 'a'
-        #   1: 'b'
-        #   2: 'c'
-        #   3: '( RS )'
-        'AS': [0.25, 0.25, 0.25, 0.25],
+        'A': [0.1, 0.1, 0.1, 0.7]
     }
 
     cfg = CFG(regex_rules, 'R', rule_probs=regex_rule_probs)

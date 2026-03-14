@@ -6,6 +6,21 @@ import networkx as nx
 from sympy import Matrix
 import matplotlib.pyplot as plt
 
+def nullspaces_equal(A, B):
+    ns_A = A.nullspace()
+    ns_B = B.nullspace()
+
+    if len(ns_A) != len(ns_B):
+        return False
+    if len(ns_A) == 0:
+        return True
+
+    NA = Matrix.hstack(*ns_A)
+    NB = Matrix.hstack(*ns_B)
+
+    r = NA.rank()
+    return Matrix.hstack(NA, NB).rank() == r
+
 def automata_to_graph(my_dfa):
     # converts a dfa into a networkx graph
     # note that we use a MultiDiGraph
@@ -89,16 +104,12 @@ def relabel(G, cycles, morphism):
     # the new label is the sum of morphism[sym]
     # and the sum of morphism[label] for edges in the path
 
-
-    # copy the graph to avoid modifying while iterating
-    start_node = list(G.nodes())[0]
     graph_copy = G.copy()
-    for u, v, data in graph_copy.edges(data=True):
-        label = data['label']
-        label = tuple(label) if isinstance(label, Matrix) else label
-        # find a path from start_node to u (they all must end up the same)
+    start_node = list(graph_copy.nodes())[0]
+    for u, v, data in G.edges(data=True):
         path = nx.shortest_path(G, source=start_node, target=u)
         path_edges = get_path_edges(G, path)
+        label = data['label']
         vec = morphism[label]
         if path_edges:
             # if there are paths, sum up the labels under the morphism
@@ -106,81 +117,71 @@ def relabel(G, cycles, morphism):
             path_edges = path_edges[0]
             for e in path_edges:
                 vec += morphism[e[2]]
-
-        # update the label of this edge in graph_copy by column-wise concatenating vec
-        for key in graph_copy[u][v]:
-            edge_label = graph_copy[u][v][key]['label']
-            edge_label = tuple(edge_label) if isinstance(edge_label, Matrix) else edge_label
-            if edge_label == label:
-                    if not isinstance(edge_label, tuple):
-                        # first relabling of just symbols
-                        graph_copy[u][v][key]['label'] = vec
-                    else:
-                        # need to keep history of labels, so we concat label vectors
-                        temp_g_label = G[u][v][key]['label'].copy()
-                        temp_g_label.col_join(vec)
-                        graph_copy[u][v][key]['label'] = temp_g_label
-    # copy back into G
-    for u, v, key, data in graph_copy.edges(keys=True, data=True):
-        G[u][v][key]['label'] = data['label']
+        # update the label of the u -> v edge in the copy of the graph
+        graph_copy[u][v][label]['label'] = tuple(vec)
+    G.clear()
+    for u, v, data in graph_copy.edges(data=True):
+        key = list(graph_copy[u][v].keys())[0]
+        new_label = tuple([data['label'],key])
+        G.add_edge(u, v, label=new_label, key=new_label)
 
 def separated(G):
-    # unseparated nodes are those with incoming edges having the same label
-    # the graph is separated by the labels if there are no unseparated nodes
-    labels = {}
-    for _, v, data in G.edges(data=True):
-        label = data['label']
-        label = tuple(label) if isinstance(label, Matrix) else label
-        if label in labels:
-            if not labels[label] == v:
+    # separated nodes are those where the set of outgoing edge labels are different
+    # check that all pairs of nodes are separated
+    # do not consider the 'garbage' node
+    nodes = [n for n in G.nodes() if n != 'garbage']
+    for i in range(len(nodes)):
+        for j in range(i + 1, len(nodes)):
+            n1 = nodes[i]
+            n2 = nodes[j]
+            labels_n1 = set()
+            for _, v, data in G.out_edges(n1, data=True):
+                labels_n1.add(data['label'])
+            labels_n2 = set()
+            for _, v, data in G.out_edges(n2, data=True):
+                labels_n2.add(data['label'])
+            if labels_n1 == labels_n2:
                 return False
-        else:
-            labels[label] = v
     return True
 
 def get_ordered_alphabet(G):
-    # obtain an ordered list of the labels of the edges
-    # the ordering is used to order the variables in linear equations
-    edge_list = list(G.edges(data=True))
-    hashable_labels = []
-    for u, v, data in edge_list:
-        label = data['label']
-        if isinstance(label, Matrix):
-            label = tuple(label)
-        hashable_labels.append(label)
-    ordered_alphabet = list(set(hashable_labels))
-    return ordered_alphabet
+    labels = []
+    for u in sorted(G.nodes(), key=str):
+        for u, v, data in G.out_edges(u, data=True):
+            label = data['label']
+            if label not in labels:
+                labels.append(label)
+    return labels
 
 def attack_scc(G):
     # attack an SCC (to decide membership in C-RASP)
     temp_G = G.copy()
-    prev_nullspace = None
+    prev_basis = None
     # the algorithm converges once the null spaces don't change
     while True:
         # find all balanced morphisms using the nullspace of the loop equations
         ordered_alphabet = get_ordered_alphabet(temp_G)
         cycles = get_simple_cycles_edges(temp_G)
-        basis = loop_equations(ordered_alphabet, cycles)
-        A = Matrix(basis)
-        current_nullspace = A.nullspace()
-        if current_nullspace == prev_nullspace:
+        basis = Matrix(loop_equations(ordered_alphabet, cycles))
+        # print(f"Current basis: {basis}")
+        if prev_basis is not None and nullspaces_equal(basis, prev_basis):
             # converged
             break
-        if current_nullspace == []:
+        if basis.nullspace() == []:
             # no more nontrivial balanced morphisms
             break
         else:
-            prev_nullspace = current_nullspace
-        # relabel the graph using the morphism defined by the nullspace basis
-        morphism = {}
-        for i in range(len(ordered_alphabet)):
-            vec = []
-            for nb in current_nullspace:
-                vec.append(nb[i])
-            morphism[ordered_alphabet[i]] = Matrix(vec)
-        # apply the morphism to relabel the graph
-        relabel(temp_G, cycles, morphism)
-        # print(f"Relabeled graph edges with labels: {[(u, v, data['label']) for u, v, data in temp_G.edges(data=True)]}")
+            prev_basis = basis
+            # relabel the graph using the morphism defined by the nullspace basis
+            morphism = {}
+            for i in range(len(ordered_alphabet)):
+                vec = []
+                for nb in basis.nullspace():
+                    vec.append(nb[i])
+                morphism[ordered_alphabet[i]] = Matrix(vec)
+            # apply the morphism to relabel the graph
+
+            relabel(temp_G, cycles, morphism)
     # after convergence, return whether the morphism separates the nodes
     return separated(temp_G)
 
@@ -194,6 +195,7 @@ def decide_CRASP_membership(my_dfa):
         temp_G = G.subgraph(component).copy()
         garbage_node = 'garbage'
         temp_G.add_node(garbage_node)
+        # print(f"Attacking SCC with nodes: {temp_G.nodes()} and edges: {[(u, v, data['label']) for u, v, data in temp_G.edges(data=True)]}")
         # make sure that every node has an outgoing edge for every symbol in the alphabet (add a garbage node for missing edges)
         # but don't add self loops to the garbage node
         alphabet = set()
@@ -207,7 +209,7 @@ def decide_CRASP_membership(my_dfa):
                 if node == garbage_node:
                     continue
                 if not any((node, _, data) for _, _, data in temp_G.out_edges(node, data=True) if data['label'] == sym):
-                    temp_G.add_edge(node, garbage_node, label=sym)
+                    temp_G.add_edge(node, garbage_node, label=sym, key=sym)
         # show the graph of the SCC being attacked
         result = attack_scc(temp_G)
         if not result:
@@ -215,21 +217,50 @@ def decide_CRASP_membership(my_dfa):
     return True
 
 def decide_CRASP_membership_from_regex(regex_str):
-    nfa = NFA.from_regex(regex_str)
+    nfa = NFA.from_regex(regex_str.replace('+', '|'))
     my_dfa = DFA.from_nfa(nfa, minify=True)
     return decide_CRASP_membership(my_dfa)
 
 if __name__ == "__main__":
 
-    regex_str = '(bba)*'
-    print("regex:", regex_str)
-    nfa = NFA.from_regex(regex_str)
-    my_dfa = DFA.from_nfa(nfa, minify=True)
+    # regex_str = '(a+b)*b'
+    # print("regex:", regex_str)
+    # nfa = NFA.from_regex(regex_str.replace('+', '|'))
+    # my_dfa = DFA.from_nfa(nfa, minify=True)
 
-    generate_dfa_diagram(my_dfa, filename='drawings/my_dfa', output_format='svg', auto_open=False)
-    G = automata_to_graph(my_dfa)
-    plt.show()
+    # generate_dfa_diagram(my_dfa, filename='drawings/my_dfa', output_format='svg', auto_open=False)
+    # G = automata_to_graph(my_dfa)
+    # plt.show()
 
-    membership = decide_CRASP_membership(my_dfa)
-    print(f"CRASP membership: {membership}")
+    # membership = decide_CRASP_membership(my_dfa)
+    # print(f"CRASP membership: {membership}")
 
+    test_regexes = [
+        ('(aa(ba)*abb(ab)*b)*', True),
+        ('(a+b)*bb(a+b)*', False),
+        ('(a+b)*b', False),
+        ('(aa*bb*)(aa*bb*)*', False),
+        ('(aa*bb*)(aa*bb*)(aa*bb*)', True),
+        ('(aa*bb*)(aa*bb*)(aa*bb*)(aa*bb*)', True),
+        ('(ab)(ab)*aa*', True),
+        ('(ab)(ab)*aa*bb*', True),
+        ('(ab)(ab)*b(ab)(ab)*', True),
+        ('(ab)(ab)*bb*(ab)(ab)*', True),
+        ('((ab)(ab)*bb*)*', False),
+        ('((ab)(ab)*bb*)((ab)(ab)*bb*)((ab)(ab)*bb*)', True),
+        ('(aa(ba)*abb(ab)*b)*', True),
+        ('(ab+ba)*', True),
+        ('(ab+bba)*', False),
+        ('(ab+aabb)*', False)
+    ]
+
+    errors = 0
+    for regex_str, expected in test_regexes:
+        result = decide_CRASP_membership_from_regex(regex_str)
+        print(f"Regex: {regex_str}, Expected: {expected}, Got: {result}")
+        if result != expected:
+            errors += 1
+    print(f"Total errors: {errors} out of {len(test_regexes)}")
+
+
+    # errors (a+b)*b and (aa*bb*)(aa*bb*)=a(a+b)*b
